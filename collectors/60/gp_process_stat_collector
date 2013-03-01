@@ -1,0 +1,43 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+
+my @process_list = `find /proc/ -maxdepth 1 -type d -user gpadmin`;
+my $time = time;
+
+foreach my $process ( @process_list ) {
+  chomp $process;
+  my $cmdline = `cat $process/cmdline`;
+  next unless ( $cmdline =~ /^postgres: / && $cmdline !~ /process/);
+  my $io_results = `cat $process/io`;
+  my $stat_results = `cat $process/stat`;
+  my $status_results = `cat $process/status`;
+
+
+  my @vals = split('/',$process);
+  my @stat_vals = split(' ',$stat_results);
+  my ($vm_rss) = $status_results =~ /VmRSS:\s+(\d+)\skB/;
+  my ($vm_size) = $status_results =~ /VmSize:\s+(\d+)\skB/;
+  my ($vm_peak) = $status_results =~ /VmPeak:\s+(\d+)\skB/;
+
+  my $proc_id = $vals[-1];
+  my ($io_read) = $io_results =~ /read_bytes: (\d+)/; 
+  my ($io_wrote) = $io_results =~ /write_bytes: (\d+)/; 
+  my $utime = $stat_vals[13];
+  my $ktime = $stat_vals[14];
+
+  next if (!$utime || !$io_read); 
+
+  my ($port, $user,$db,$connect_loc,$connection,$segment,$status) = $cmdline =~ /^postgres: (port \d+,) (\S+) (\S+) (\S+) (\S+) (\S+) ([A-Za-z0-9-_ ]*)/;
+
+  print qq~gp_proc.io_read $time $io_read user=$user proc_id=$proc_id db=$db conn=$connection seg=$segment\n~;
+  print qq~gp_proc.io_wrote $time $io_wrote user=$user proc_id=$proc_id db=$db conn=$connection seg=$segment\n~;
+  print qq~gp_proc.ktime $time $ktime user=$user proc_id=$proc_id db=$db conn=$connection seg=$segment\n~;
+  print qq~gp_proc.utime $time $utime user=$user proc_id=$proc_id db=$db conn=$connection seg=$segment\n~;
+  print qq~gp_proc.vm_peak $time $vm_peak user=$user proc_id=$proc_id db=$db conn=$connection seg=$segment\n~;
+  print qq~gp_proc.vm_size $time $vm_size user=$user proc_id=$proc_id db=$db conn=$connection seg=$segment\n~;
+  print qq~gp_proc.vm_rss $time $vm_rss user=$user proc_id=$proc_id db=$db conn=$connection seg=$segment\n~;
+  }
+
+exit;
